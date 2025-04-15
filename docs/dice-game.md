@@ -16,7 +16,7 @@ The Dice Game implementation demonstrates the ADD-Q algorithm in a probabilistic
 
 The state space consists of all possible combinations of dice values. For N dice with F faces each, the state space size is F^N. For example, with 3 standard dice (6 faces), there are 6^3 = 216 possible states.
 
-## Layman's Explanation
+## Task Explanation
 
 Imagine you have several dice in front of you. Your goal is to get all the dice to show the same number using as few rolls as possible. On each turn, you decide which number you want to keep, and you reroll all dice that don't show that number. The game ends when all dice show the same number.
 

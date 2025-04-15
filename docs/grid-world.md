@@ -16,7 +16,7 @@ The Grid World navigation implementation demonstrates the ADD-Q algorithm in a c
 
 The state space consists of all possible agent positions in the grid. For an NxM grid, there are NxM possible states (minus obstacle locations). The state is represented as the (x,y) coordinates of the agent.
 
-## Layman's Explanation
+## Task Explanation
 
 Imagine a robot navigating a room with obstacles, trying to find the fastest path to a destination. The robot can move up, down, left, or right on each step, but it needs to avoid obstacles like furniture or walls. 
 

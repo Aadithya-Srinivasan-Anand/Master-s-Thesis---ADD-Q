@@ -21,7 +21,7 @@ The state space combines the agent's position with the status of each resource:
 
 For an NxM grid with R resources, the state space size is NxM×2^R. For example, with a 5×5 grid and 3 resources, there are 5×5×2^3 = 200 possible states.
 
-## Layman's Explanation
+## Task Explanation
 
 Imagine you have a robot in a room with several valuable items scattered around. The robot's job is to collect all these items while navigating around furniture and obstacles. The challenge is finding the most efficient path to gather all items in the shortest time.
 

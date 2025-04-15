@@ -17,7 +17,7 @@ The Network Resource Balancing implementation demonstrates the ADD-Q algorithm i
 
 The state space consists of all possible combinations of session states. With N sessions and 4 possible states per session, the state space size is 4^N. For example, with 8 sessions, there are 4^8 = 65,536 possible states.
 
-## Layman's Explanation
+## Task Explanation
 
 Imagine you're managing internet connections for a company. Multiple users want to download files, but your network has limited bandwidth. When users request downloads, they can be either granted bandwidth (TRANSFERRING) or put on hold (BLOCKED) if there's not enough bandwidth available. Users may also finish their downloads (returning to IDLE) or make new requests over time.
 
