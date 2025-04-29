@@ -1,3 +1,5 @@
+//Author - Aadithya Srinivasan Anand
+
 // scalable_q_learn_symbolic_network_res_alloc_dynamic_with_metrics.cpp
 // Scalable Symbolic Q-Learning for Network Resource Allocation using BDDs/ADDs.
 // WITH Metrics Collection and CSV Output.
@@ -6,6 +8,7 @@
 #include <vector>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 #include <cmath>
 #include <cassert>
 #include <iomanip>
@@ -44,7 +47,7 @@ double P_NEW_REQUEST = 0.25;
 double GAMMA = 0.9;
 double EPSILON = 0.1;
 double ALPHA = 0.1;
-int NUM_EPISODES = 35000; // Default
+int NUM_EPISODES = 100000; // Default
 double GOAL_REWARD = 100.0;
 double ACTION_COST = -0.5;          // Cost for any action (wait or successful unblock)
 double UNBLOCK_FAIL_COST = -2.0;    // Additional penalty for failed unblock attempt
@@ -53,6 +56,7 @@ double UNBLOCK_FAIL_COST = -2.0;    // Additional penalty for failed unblock att
 using Action = int; // 0..NUM_SESSIONS-1 = Unblock(i), NUM_SESSIONS = Wait
 const int INVALID_ACTION = -1;
 const double EVAL_ERROR_THRESHOLD = -9999.0;
+const size_t ESTIMATED_BYTES_PER_NODE = 32; // Informed estimate for CUDD internal node size
 
 // --- Metrics Structure ---
 struct AddQMetrics {
@@ -62,6 +66,7 @@ struct AddQMetrics {
     std::vector<int> terminal_state_visits; // Renamed for consistency
     std::vector<double> bellman_errors;
     std::vector<double> memory_usage;
+    std::vector<double> estimated_node_memory_mb;
     // Add any specific metrics if needed, e.g., avg bandwidth utilization?
 };
 
@@ -674,7 +679,42 @@ double calculateBellmanError(const std::vector<DdNode*>& q_functions,
 
     return (count > 0) ? (total_error / count) : 0.0;
 }
+// Collect all unique nodes in an ADD/BDD structure
+void collectUniqueNodes(DdNode* node, std::unordered_set<DdNode*>& uniqueNodes) {
+    if (!node) return;
+    
+    // Skip if already processed
+    DdNode* regular = Cudd_Regular(node);
+    if (uniqueNodes.find(regular) != uniqueNodes.end())
+        return;
+    
+    // Add this node
+    uniqueNodes.insert(regular);
+    
+    // Skip terminal nodes
+    if (Cudd_IsConstant(regular))
+        return;
+    
+    // Process children
+    collectUniqueNodes(Cudd_T(regular), uniqueNodes);
+    collectUniqueNodes(Cudd_E(regular), uniqueNodes);
+}
 
+// Calculate actual memory used by Q-functions in megabytes
+double calculateActualADDQMemory(const std::vector<DdNode*>& q_functions) {
+    if (q_functions.empty()) return 0.0;
+    
+    // Count unique nodes across all Q-functions
+    std::unordered_set<DdNode*> uniqueNodes;
+    for (const auto& q_add : q_functions) {
+        if (!q_add) continue;
+        collectUniqueNodes(q_add, uniqueNodes);
+    }
+    
+    // Calculate memory in MB (using actual DdNode size)
+    double totalMemoryMB = uniqueNodes.size() * sizeof(DdNode) / (1024.0 * 1024.0);
+    return totalMemoryMB;
+}
 
 // --- Symbolic Q-Learning (with Metrics Hooks) ---
 std::map<std::string, Action> symbolicQLearning(bool verbose = true,
@@ -874,7 +914,7 @@ std::map<std::string, Action> symbolicQLearning(bool verbose = true,
                  double avg_dag = calculateAverageDAGSize(q_functions);
                  double bellman_err = calculateBellmanError(q_functions, sampled_states_for_metrics, num_actions);
                  // Use sizeof(DdNode) for estimation, acknowledging it's a proxy
-                 double mem_usage = avg_dag * sizeof(DdNode) / (1024.0 * 1024.0);
+                 double mem_usage = calculateActualADDQMemory(q_functions);
 
                  metrics.avg_q_values.push_back(avg_q);
                  metrics.avg_decision_dag_sizes.push_back(avg_dag);

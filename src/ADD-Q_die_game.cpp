@@ -1,13 +1,16 @@
-// Efficient ADD-Q algorithm implementation for a dice game (e.g., Pig variations)
+//Author - Aadithya Srinivasan Anand
+
+
+// Efficient ADD-Q algorithm implementation for a dice game 
 // Demonstrates symbolic representation for dice states and expected value updates.
 // Includes metrics collection and CSV output similar to the grid world example.
-// Author - Aadithya Srinivasn Anand
 
 #include <iostream>
 #include <vector>
 #include <map>
 #include <unordered_map> // Keep for potential future cache, though not used now
 #include <cmath>
+#include <unordered_set> 
 #include <cassert>
 #include <iomanip>
 #include <string>
@@ -19,11 +22,11 @@
 #include <random>
 #include <numeric> // std::iota
 #include <functional> // Keep for potential future use
-#include <memory> // Keep for potential future use, just in case 
+#include <memory> // Keep for potential future use
 
 // Include CUDD header
 #include "cudd.h"
-#include "cuddInt.h" // Keep for potential detailed debugging - generally it is better to path it to cudd when you download it
+#include "cuddInt.h" // Keep for potential detailed debugging
 
 // --- Dice Game Parameters ---
 int NUM_DICE = 3;
@@ -31,7 +34,7 @@ int NUM_FACES = 6;      // Default to standard dice
 double GAMMA = 0.9;
 double EPSILON = 0.2;
 double ALPHA = 0.1;
-int NUM_EPISODES = 20000;
+int NUM_EPISODES = 40000;
 double TERMINAL_REWARD = 1.0; // Reward for reaching a terminal state (all dice same)
 double STEP_COST = 0.0;       // Cost per non-terminal step (can be non-zero)
 
@@ -46,6 +49,7 @@ const Action INVALID_ACTION = -1; // Represents terminal state or invalid action
 int NUM_ACTIONS = 0; // Calculated in main
 const double EVAL_ERROR_THRESHOLD = -9990.0; // Error check threshold
 const int METRICS_INTERVAL = 100; 
+const size_t ESTIMATED_BYTES_PER_NODE = 32; // Informed estimate for CUDD internal node size
 
 // Metrics for ADD-Q analysis (adapted from grid_world)
 struct AddQMetrics {
@@ -55,13 +59,11 @@ struct AddQMetrics {
     std::vector<int> terminal_state_visits;    // Visits to terminal states per episode
     std::vector<double> bellman_errors;        // Bellman error per episode
     std::vector<double> memory_usage;          // Estimated memory usage (MB) per episode
-    // std::vector<double> avg_path_lengths; // Not directly applicable like grid world, add later if required
 };
-
 // Globals
 DdManager* manager = nullptr;
 std::vector<DdNode*> vars; // BDD variables
-DdNode* terminal_bdd = nullptr; // BDD representing all terminal states (refer CuDD manual for more details)
+DdNode* terminal_bdd = nullptr; // BDD representing all terminal states
 std::mt19937 env_gen; // Random generator for environment aspects (if any needed beyond simulation)
 AddQMetrics metrics;
 
@@ -73,12 +75,8 @@ void saveMetricsToCSV();
 void printPolicy(const std::map<std::string, Action>& policy); // Keep printPolicy declaration
 int calculateVarsPerDie(int numFaces); // Declaration for calculation function
 
-
-/********************************************************************************************************************************************************/
-// ---------------------------------- Helper Functions (Printing, State Conversion, CUDD Interaction, etc.) --------------------------------------------
-/********************************************************************************************************************************************************/
-
-
+// --- Helper Functions (Printing, State Conversion, CUDD Interaction, etc.) ---
+// (Most helpers are taken directly from n_val_q_learn_symbolic.txt)
 
 void printNodeInfo(const char* name, DdNode* node, bool isAdd = false) {
     if (!manager) return;
@@ -197,7 +195,7 @@ std::vector<Transition> generateTransitions(const std::vector<int>& state, Actio
         return transitions;
     }
 
-    // Compute the number of possible outcomes for the rerolled dice
+    // Calculate the number of possible outcomes for the rerolled dice
     long long possibleOutcomes = 1;
     if (NUM_FACES <= 0) return {}; // Avoid issues with zero faces
     for(int i=0; i<rerolledDice; ++i) {
@@ -309,6 +307,7 @@ DdNode* createStateBDD(DdManager* mgr, const std::vector<int>& state, const std:
 
         // Check if dieValueBdd creation failed (returned logicZero)
         if (dieValueBdd == Cudd_ReadLogicZero(mgr)) {
+            // No need to print error here, createFaceValueBDD likely did
             Cudd_RecursiveDeref(mgr, stateBdd); // Clean up the accumulating state BDD
             // dieValueBdd is logicZero, managed by CUDD, no deref needed
             return Cudd_ReadLogicZero(mgr); // Propagate failure
@@ -336,7 +335,7 @@ DdNode* createStateBDD(DdManager* mgr, const std::vector<int>& state, const std:
 }
 
 // Evaluate the value of an ADD for a specific concrete dice state
-double evaluateADD(DdManager* mgr, DdNode* add, const std::vector<int>& state, const std::vector<DdNode*>& /*bddVars - according to me it is not actually necessary for Eval*/) {
+double evaluateADD(DdManager* mgr, DdNode* add, const std::vector<int>& state, const std::vector<DdNode*>& /*bddVars - not needed for Eval*/) {
      // --- Input Validation ---
      if (!mgr) { std::cerr << "Error: Null manager passed to evaluateADD." << std::endl; return EVAL_ERROR_THRESHOLD; }
      if (!add) { /*std::cerr << "Warning: Null ADD passed to evaluateADD." << std::endl;*/ return EVAL_ERROR_THRESHOLD; } // Null ADD might be valid (e.g., before learning)
@@ -411,7 +410,7 @@ bool isTerminalState(DdManager* mgr, DdNode* termBdd, const std::vector<int>& st
 
     return isTerminal;
 
-    /* Alternative using Cudd_Eval (something is bugging out - need to kook into it):
+    /* Alternative using Cudd_Eval (potentially less efficient if called often):
     int managerSize = Cudd_ReadSize(mgr);
     if (managerSize < TOTAL_BDD_VARS) return false;
     std::vector<int> assignment(managerSize, 0);
@@ -431,12 +430,11 @@ bool isTerminalState(DdManager* mgr, DdNode* termBdd, const std::vector<int>& st
     return (evalNode != nullptr && evalNode == Cudd_ReadOne(mgr));
     */
 }
-/************************************************************************************************************************************************************ */
-// --------------------------------Metrics Calculation Functions ---------------------------------------------------------------------------------------
-/************************************************************************************************************************************************************* */
 
 
-// Calculate average Q-values across all Q-functions and sampled states 
+// --- Metrics Calculation Functions (Adapted from Grid World) ---
+
+// Calculate average Q-values across all Q-functions and sampled states
 double calculateAverageQValue(const std::vector<DdNode*>& q_functions,
                              const std::vector<std::vector<int>>& sample_states) {
     if (q_functions.empty() || sample_states.empty() || !manager) return 0.0;
@@ -481,7 +479,7 @@ double calculateAverageDAGSize(const std::vector<DdNode*>& q_functions) {
     return (valid_q_functions > 0) ? (static_cast<double>(total_size) / valid_q_functions) : 0.0;
 }
 
-// Calculate Bellman error for a sample of states (comment out if necessarry)
+// Calculate Bellman error for a sample of states (adapted for dice game)
 double calculateBellmanError(const std::vector<DdNode*>& q_functions,
                             const std::vector<std::vector<int>>& sample_states,
                             DdNode* terminalBDD) {
@@ -573,13 +571,44 @@ double calculateBellmanError(const std::vector<DdNode*>& q_functions,
     return (count > 0) ? (total_error / count) : 0.0;
 }
 
+// Collect all unique nodes in an ADD/BDD structure
+void collectUniqueNodes(DdNode* node, std::unordered_set<DdNode*>& uniqueNodes) {
+    if (!node) return;
+    
+    // Skip if already processed
+    DdNode* regular = Cudd_Regular(node);
+    if (uniqueNodes.find(regular) != uniqueNodes.end())
+        return;
+    
+    // Add this node
+    uniqueNodes.insert(regular);
+    
+    // Skip terminal nodes
+    if (Cudd_IsConstant(regular))
+        return;
+    
+    // Process children
+    collectUniqueNodes(Cudd_T(regular), uniqueNodes);
+    collectUniqueNodes(Cudd_E(regular), uniqueNodes);
+}
 
-/************************************************************************************************************************************************************ */
-// ---------------------------------------------- Symbolic Q-Learning (Core logic from n_val_q_learn_symbolic, metrics added) ---------------------------------
-/************************************************************************************************************************************************************* */
+// Calculate actual memory used by Q-functions in megabytes
+double calculateActualADDQMemory(const std::vector<DdNode*>& q_functions) {
+    if (q_functions.empty()) return 0.0;
+    
+    // Count unique nodes across all Q-functions
+    std::unordered_set<DdNode*> uniqueNodes;
+    for (const auto& q_add : q_functions) {
+        if (!q_add) continue;
+        collectUniqueNodes(q_add, uniqueNodes);
+    }
+    
+    // Calculate memory in MB (using actual DdNode size)
+    double totalMemoryMB = uniqueNodes.size() * sizeof(DdNode) / (1024.0 * 1024.0);
+    return totalMemoryMB;
+}
 
-
-
+// --- Symbolic Q-Learning (Core logic from n_val_q_learn_symbolic, metrics added) ---
 std::map<std::string, Action> symbolicQLearning(bool verbose = true,
                                                int sample_num_states_metrics = 1000, // How many states to sample for periodic metrics
                                                bool collect_metrics = true) {
@@ -602,7 +631,7 @@ std::map<std::string, Action> symbolicQLearning(bool verbose = true,
     }
 
     // --- Re-create Terminal BDD ---
-    // Deref existing one if it exists from a previous run (e.g., in testing) -- in doubt look through cudd folder files
+    // Deref existing one if it exists from a previous run (e.g., in testing)
     if (terminal_bdd) {
         Cudd_RecursiveDeref(manager, terminal_bdd);
         terminal_bdd = nullptr;
@@ -613,40 +642,24 @@ std::map<std::string, Action> symbolicQLearning(bool verbose = true,
         DdNode* all_same_val_bdd = Cudd_ReadOne(manager); Cudd_Ref(all_same_val_bdd); bool inner_error = false;
         for (int d = 0; d < NUM_DICE; ++d) {
             DdNode* die_val_bdd = createFaceValueBDD(manager, d, face_value, vars); // Referenced
-            if (die_val_bdd == Cudd_ReadLogicZero(manager)) { 
-                inner_error = true; 
-                Cudd_RecursiveDeref(manager, all_same_val_bdd); break; } // Specific check
+            if (die_val_bdd == Cudd_ReadLogicZero(manager)) { inner_error = true; Cudd_RecursiveDeref(manager, all_same_val_bdd); break; } // Specific check
             DdNode* tmp_and = Cudd_bddAnd(manager, all_same_val_bdd, die_val_bdd);
-            if (!tmp_and) { inner_error = true; Cudd_RecursiveDeref(manager, all_same_val_bdd); 
-                Cudd_RecursiveDeref(manager, die_val_bdd); 
-                break; }
-            Cudd_Ref(tmp_and); 
-            Cudd_RecursiveDeref(manager, all_same_val_bdd); 
-            Cudd_RecursiveDeref(manager, die_val_bdd); 
-            all_same_val_bdd = tmp_and;
+            if (!tmp_and) { inner_error = true; Cudd_RecursiveDeref(manager, all_same_val_bdd); Cudd_RecursiveDeref(manager, die_val_bdd); break; }
+            Cudd_Ref(tmp_and); Cudd_RecursiveDeref(manager, all_same_val_bdd); Cudd_RecursiveDeref(manager, die_val_bdd); all_same_val_bdd = tmp_and;
         }
-        if (inner_error) {
-             terminal_creation_error = true; std::cerr << "Error creating 'all_same_val_bdd' for value " << face_value << std::endl;
-             break; }
+        if (inner_error) { terminal_creation_error = true; std::cerr << "Error creating 'all_same_val_bdd' for value " << face_value << std::endl; break; }
         DdNode* tmp_or = Cudd_bddOr(manager, terminal_bdd, all_same_val_bdd);
-        if (!tmp_or) { 
-            terminal_creation_error = true; Cudd_RecursiveDeref(manager, all_same_val_bdd); std::cerr << "Error: Cudd_bddOr failed." << std::endl; 
-            break; }
-        Cudd_Ref(tmp_or); Cudd_RecursiveDeref(manager, terminal_bdd); 
-        Cudd_RecursiveDeref(manager, all_same_val_bdd); 
-        terminal_bdd = tmp_or;
+        if (!tmp_or) { terminal_creation_error = true; Cudd_RecursiveDeref(manager, all_same_val_bdd); std::cerr << "Error: Cudd_bddOr failed." << std::endl; break; }
+        Cudd_Ref(tmp_or); Cudd_RecursiveDeref(manager, terminal_bdd); Cudd_RecursiveDeref(manager, all_same_val_bdd); terminal_bdd = tmp_or;
     }
-    if (terminal_creation_error) { 
-        std::cerr << "Aborting: terminal BDD creation error." << std::endl; if (terminal_bdd) Cudd_RecursiveDeref(manager, terminal_bdd); 
-        return {}; }
+    if (terminal_creation_error) { std::cerr << "Aborting: terminal BDD creation error." << std::endl; if (terminal_bdd) Cudd_RecursiveDeref(manager, terminal_bdd); return {}; }
     if (verbose) printNodeInfo("terminal_states_bdd (learning)", terminal_bdd);
 
 
     // --- Initialize Q-functions ---
     std::vector<DdNode*> q_functions(NUM_ACTIONS);
     DdNode* initial_q_add = Cudd_addConst(manager, 0.0);
-     if (!initial_q_add) { 
-        std::cerr << "Error: Failed to create initial Q-value ADD." << std::endl; Cudd_RecursiveDeref(manager, terminal_bdd); return {}; }
+     if (!initial_q_add) { std::cerr << "Error: Failed to create initial Q-value ADD." << std::endl; Cudd_RecursiveDeref(manager, terminal_bdd); return {}; }
     Cudd_Ref(initial_q_add);
     for (int a = 0; a < NUM_ACTIONS; ++a) {
         q_functions[a] = initial_q_add;
@@ -1007,25 +1020,39 @@ std::map<std::string, Action> symbolicQLearning(bool verbose = true,
                 // Size of DdNode is internal to CUDD, using a rough estimate (e.g., 32-40 bytes)
                 // Let's use sizeof(DdNode) if available, otherwise a guess. CuddNode is typically around 32 bytes.
                 // We use the internal CuddNode structure size for a better estimate.
-                double mem_usage = avg_dag_size * sizeof(DdNode) / (1024.0 * 1024.0); // MB
+                
+                // Calculate actual Q-function memory (only the diagrams, not CUDD overhead)
+                double mem_usage = calculateActualADDQMemory(q_functions);
                 metrics.memory_usage.push_back(mem_usage);
+
+
+                if (verbose && print_this_episode) {
+                    std::cout << "    Q-function memory: " << mem_usage << " MB" << std::endl;
+                }
+
+
 
                 if (verbose && print_this_episode) { // Also print metrics if it's a print interval episode
                     std::cout << "  Metrics at episode " << (episode + 1) << ":" << std::endl;
                     std::cout << "    Avg Q-value: " << avg_q << std::endl;
                     std::cout << "    Avg DAG size: " << avg_dag_size << " nodes" << std::endl;
                     std::cout << "    Bellman error: " << bellman_error << std::endl;
-                    std::cout << "    Est. ADD memory: " << mem_usage << " MB" << std::endl;
                 }
             } else if ((episode + 1) % METRICS_INTERVAL == 0) {
-                 // Push default values if metrics couldn't be calculated (e.g., no sampled states)
-                 metrics.avg_q_values.push_back(0.0);
-                 metrics.avg_decision_dag_sizes.push_back(calculateAverageDAGSize(q_functions)); // Still calc DAG
-                 metrics.bellman_errors.push_back(0.0);
-                 metrics.memory_usage.push_back(calculateAverageDAGSize(q_functions) * sizeof(DdNode) / (1024.0 * 1024.0));
-                 if (verbose && print_this_episode) {
-                      std::cout << "  Metrics skipped at episode " << (episode + 1) << " (no sampled states)." << std::endl;
-                 }
+                // Push default values if metrics couldn't be calculated (e.g., no sampled states)
+                metrics.avg_q_values.push_back(0.0);
+                metrics.avg_decision_dag_sizes.push_back(calculateAverageDAGSize(q_functions)); // Still calc DAG
+                metrics.bellman_errors.push_back(0.0);
+                
+                // Use the new memory calculation function instead of DAG-based approach
+                double mem_usage = calculateActualADDQMemory(q_functions);
+                metrics.memory_usage.push_back(mem_usage);
+        
+                
+                if (verbose && print_this_episode) {
+                    std::cout << "  Metrics skipped at episode " << (episode + 1) << " (no sampled states)." << std::endl;
+                    std::cout << "  Memory usage: " << mem_usage << " MB" << std::endl;
+                }
             }
         }
 
@@ -1422,7 +1449,6 @@ void saveMetricsToCSV() {
         std::cout << "No metrics collected, CSV files not generated." << std::endl;
     }
 }
-
 
 // Print help message (adapted from grid world)
 void printHelp() {

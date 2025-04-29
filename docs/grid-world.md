@@ -73,16 +73,16 @@ The Q-learning algorithm is implemented with symbolic operations:
 
 ```bash
 # Basic run with 8x8 grid, 10 obstacles, 5000 episodes
-./add_q_grid_world -gx 8 -gy 8 -obs 10 -e 5000 -v
+./ADD-Q_grid_world -gx 8 -gy 8 -obs 10 -e 5000 -v
 
 # Run with metrics collection
-./add_q_grid_world -gx 8 -gy 8 -obs 10 -e 5000 -metrics -v
+./ADD-Q_grid_world -gx 8 -gy 8 -obs 10 -e 5000 -metrics -v
 
 # Run with simulation to test the learned policy
-./add_q_grid_world -gx 8 -gy 8 -obs 10 -e 5000 -sim 100 -v
+./ADD-Q_grid_world -gx 8 -gy 8 -obs 10 -e 5000 -sim 100 -v
 
 # Larger grid world
-./add_q_grid_world -gx 12 -gy 12 -obs 20 -e 10000 -metrics -sim 100 -v
+./ADD-Q_grid_world -gx 12 -gy 12 -obs 20 -e 10000 -metrics -sim 100 -v
 ```
 
 ## Implementation Details

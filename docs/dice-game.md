@@ -73,16 +73,16 @@ The implementation collects various metrics to evaluate performance:
 
 ```bash
 # Basic run with 3 dice, 6 faces, 20,000 episodes
-./add_q_dice_game -d 3 -f 6 -e 20000 -v
+./ADD-Q_dice_game -d 3 -f 6 -e 20000 -v
 
 # Run with metrics collection, sampling 1000 states for calculations
-./add_q_dice_game -d 3 -f 6 -e 20000 -metrics 1000 -v
+./ADD-Q_dice_game -d 3 -f 6 -e 20000 -metrics 1000 -v
 
 # Run with simulation to test the learned policy
-./add_q_dice_game -d 3 -f 6 -e 20000 -sim 100 -v
+./ADD-Q_dice_game -d 3 -f 6 -e 20000 -sim 100 -v
 
 # Challenging configuration with 4 dice
-./add_q_dice_game -d 4 -f 6 -e 30000 -metrics 1000 -sim 100 -v
+./ADD-Q_dice_game -d 4 -f 6 -e 30000 -metrics 1000 -sim 100 -v
 ```
 
 ## Implementation Details

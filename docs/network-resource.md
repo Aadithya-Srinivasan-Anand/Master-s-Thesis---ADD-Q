@@ -70,16 +70,16 @@ The code uses a binary encoding for session states:
 
 ```bash
 # Basic run with 8 sessions, bandwidth limit of 15, goal of 2+ transferring sessions
-./add_q_network -n 8 -bw 15 -goal 2 -e 35000 -v
+./ADD-Q_network -n 8 -bw 15 -goal 2 -e 35000 -v
 
 # With metrics collection
-./add_q_network -n 8 -bw 15 -goal 2 -e 35000 -metrics 1000 -v
+./ADD-Q_network -n 8 -bw 15 -goal 2 -e 35000 -metrics 1000 -v
 
 # Run with simulation to test policy
-./add_q_network -n 8 -bw 15 -goal 2 -e 35000 -sim 100 -v
+./ADD-Q_network -n 8 -bw 15 -goal 2 -e 35000 -sim 100 -v
 
 # Modify environment dynamics
-./add_q_network -n 8 -bw 15 -goal 2 -e 35000 -pf 0.2 -pr 0.3 -sim 100 -v
+./ADD-Q_network -n 8 -bw 15 -goal 2 -e 35000 -pf 0.2 -pr 0.3 -sim 100 -v
 ```
 
 ## Implementation Details

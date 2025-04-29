@@ -29,7 +29,7 @@ This repository includes four different implementations of ADD-Q for various dom
 1. [**Dice Game**](docs/dice-game.md): A game where the goal is to make all dice show the same value.
 2. [**Grid World Navigation**](docs/grid-world.md): A classic grid world problem with obstacles and a goal state.
 3. [**Network Resource Balancing**](docs/network-resource.md): A problem of managing network sessions with bandwidth constraints.
-4. [**Resource Collection**](docs/resource-collector.md): An agent must navigate a grid to collect resources at different locations.
+
 
 Each implementation showcases different aspects of ADD-Q and includes visualization tools, metrics collection, and simulation capabilities.
 
@@ -48,16 +48,14 @@ Each implementation can be run with various parameters:
 
 ```bash
 # Example: Dice Game
-./add_q_dice_game -d 3 -f 6 -e 20000 -metrics 1000 -sim 100 -v
+./ADD-Q_dice_game -d 3 -f 6 -e 20000 -metrics 1000 -sim 100 -v
 
 # Example: Grid World
-./add_q_grid_world -gx 8 -gy 8 -obs 10 -e 5000 -metrics -sim 100
+./ADD-Q_grid_world -gx 8 -gy 8 -obs 10 -e 5000 -metrics -sim 100
 
 # Example: Network Resource Balancing
-./add_q_network -n 8 -bw 15 -goal 2 -e 35000 -metrics 1000 -sim 100
+./ADD-Q_network -n 8 -bw 15 -goal 2 -e 35000 -metrics 1000 -sim 100
 
-# Example: Resource Collection
-./add_q_resource_collector -gx 5 -gy 5 -res 3 -e 10000 -metrics -sim 100
 ```
 
 Use the `-h` flag with any executable for a full list of parameters.

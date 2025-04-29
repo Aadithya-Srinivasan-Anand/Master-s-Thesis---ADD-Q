@@ -1,4 +1,5 @@
-// add_q_grid_world.cpp
+//Author - Aadithya Srinivasan Anand
+
 // Efficient ADD-Q algorithm implementation for grid world navigation
 // Demonstrates the benefits of symbolic representation and compressed Q-functions
 
@@ -6,6 +7,7 @@
 #include <vector>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 #include <cmath>
 #include <cassert>
 #include <iomanip>
@@ -32,6 +34,7 @@ int NUM_OBSTACLES = 10;     // Number of obstacles
 // Agent location encoding - log2 encoding for efficiency
 const int BITS_PER_COORD = 3;  // Enough for 8x8 grid (needs to be adjusted for larger grids)
 const int TOTAL_LOCATION_BITS = BITS_PER_COORD * 2;  // x and y coordinates
+const size_t ESTIMATED_BYTES_PER_NODE = 32; // Informed estimate for CUDD internal node size
 
 // Define obstacle patterns (true = obstacle, false = clear)
 std::vector<std::vector<bool>> obstacles;
@@ -574,6 +577,42 @@ double calculateBellmanError(const std::vector<DdNode*>& q_functions,
     return (count > 0) ? (total_error / count) : 0.0;
 }
 
+// Collect all unique nodes in an ADD/BDD structure
+void collectUniqueNodes(DdNode* node, std::unordered_set<DdNode*>& uniqueNodes) {
+    if (!node) return;
+    
+    // Skip if already processed
+    DdNode* regular = Cudd_Regular(node);
+    if (uniqueNodes.find(regular) != uniqueNodes.end())
+        return;
+    
+    // Add this node
+    uniqueNodes.insert(regular);
+    
+    // Skip terminal nodes
+    if (Cudd_IsConstant(regular))
+        return;
+    
+    // Process children
+    collectUniqueNodes(Cudd_T(regular), uniqueNodes);
+    collectUniqueNodes(Cudd_E(regular), uniqueNodes);
+}
+
+// Calculate actual memory used by Q-functions in megabytes
+double calculateActualADDQMemory(const std::vector<DdNode*>& q_functions) {
+    if (q_functions.empty()) return 0.0;
+    
+    // Count unique nodes across all Q-functions
+    std::unordered_set<DdNode*> uniqueNodes;
+    for (const auto& q_add : q_functions) {
+        if (!q_add) continue;
+        collectUniqueNodes(q_add, uniqueNodes);
+    }
+    
+    // Calculate memory in MB (using actual DdNode size)
+    double totalMemoryMB = uniqueNodes.size() * sizeof(DdNode) / (1024.0 * 1024.0);
+    return totalMemoryMB;
+}
 // Symbolic Q-Learning with ADD compression benefits
 std::map<std::string, Action> symbolicQLearning(bool verbose = true,
                                                int sample_num_states = 1000,
@@ -868,9 +907,13 @@ std::map<std::string, Action> symbolicQLearning(bool verbose = true,
                 double bellman_error = calculateBellmanError(q_functions, sampled_states);
                 metrics.bellman_errors.push_back(bellman_error);
                 
-                // Memory usage (estimate based on node count)
-                double mem_usage = avg_dag_size * sizeof(DdNode) / (1024.0 * 1024.0); // MB
+                // Memory usage
+                double mem_usage = calculateActualADDQMemory(q_functions);
                 metrics.memory_usage.push_back(mem_usage);
+
+                // Total memeory
+                double total_memory_mb = (double)Cudd_ReadMemoryInUse(manager) / (1024.0 * 1024.0);
+
                 
                 // Path length
                 if (reached_goal) {
@@ -887,6 +930,7 @@ std::map<std::string, Action> symbolicQLearning(bool verbose = true,
                     std::cout << "    Avg DAG size: " << avg_dag_size << " nodes" << std::endl;
                     std::cout << "    Bellman error: " << bellman_error << std::endl;
                     std::cout << "    Est. memory: " << mem_usage << " MB" << std::endl;
+                    std::cout << "    TotalCuddMem:" << total_memory_mb << "MB" << std::endl;// Show total actual"
                     if (reached_goal) {
                         std::cout << "    Steps to goal: " << steps_to_goal << std::endl;
                     }
